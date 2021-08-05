@@ -1,4 +1,3 @@
-import gym
 
 from src.models.dqnAgent import Agent
 import numpy as np
@@ -18,7 +17,7 @@ Listgraph = [g]
 candnodelist = list(g.nodes)
 
 agent = Agent( Listgraph, in_feats, hid_feats, candnodelist, seed=0)
-checkpointpath = r"C:\Users\saimunikoti\Manifestation\InfluenceMaximization_DRL\models\checkpoint_infmax.pth"
+checkpointpath = cnf.modelpath + "\checkpoint_infmaxv2.pth"
 agent.qnetwork_local.load_state_dict(torch.load(checkpointpath))
 
 # genv
