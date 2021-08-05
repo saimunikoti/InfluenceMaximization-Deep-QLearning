@@ -209,6 +209,24 @@ class genv():
 
         return state, self.candnodelist
 
+    def knownreset(self, start_node):
+
+        self.state = []
+        self.next_state = []
+        self.spreadlist =[]
+
+        self.candnodelist = self.candidatenodelist.copy()
+
+        self.candnodelist.remove(start_node)
+
+        self.state.append(start_node)
+        self.next_state.append(start_node)
+        state = self.state.copy()
+
+        self.spreadlist.append(self.IC(g=self.graphlist[0], S=state))
+
+        return state, self.candnodelist
+
     def step(self, action):
 
         # update candidate node list and next_state
@@ -223,7 +241,7 @@ class genv():
         reward = self.spreadlist[-1]-self.spreadlist[-2]
 
         # episode termination criterion
-        if len(next_state)>self.budget:
+        if len(next_state) >= self.budget:
             done = True
         else:
             done = False

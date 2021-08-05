@@ -95,7 +95,7 @@ bf.get_graphnodefeatures(g)
 
 # save gpobs with feature and node labes
 
-fileext= "g1ktest"
+fileext= "g200test"
 filepath = config.datapath +"\\ca-CSphd\\" + fileext + ".gpickle"
 
 nx.write_gpickle(g, filepath)
