@@ -1,106 +1,112 @@
 
 import networkx as nx
 from src.data import utils as ut
-from src.data import config
-from src.features import build_features as bf
-import pickle
-import scipy.io as io
+from src.data import config as cnf
 import numpy as np
 import pandas as pd
 import matplotlib
 matplotlib.use('TkAgg')
-import matplotlib.pyplot as plt
 
-## ================== generate observed graph and label for multiple graphs =========================
+def generate_RandomPLC(nodesize, noofgraphs):
+    Listgraph=[]
 
-# Listgraph, Listlabel = ut.get_weightedgraphfeaturelabel_syn('plc', 'egr', [2000])
-# gobs = bf.combine_graphs(Listgraph)
+    for countg in range(noofgraphs):
+        Listgraph.append(nx.generators.random_graphs.powerlaw_cluster_graph(nodesize, 2, 0.05))
+    return Listgraph
 
-# ## ================= save graph and corresponding labels features ===============
-# #
-# fileext = "\\plc_2000_egr_bayesian"
-#
-# nx.write_gpickle(gobs, config.datapath + 'Bayesian'+fileext + ".gpickle")
-#
-# with open(config.datapath + 'Bayesian'+ fileext + "_label.pickle", 'wb') as b:
-#     pickle.dump(Listlabel, b)
+Listgraph = generate_RandomPLC(4000,1)
 
-## ================ generate single graph feature and label weighted =====================
+def generate_RandomBA(nodesize, noofgraphs):
 
-fileext = "\\plc_600_egr"
+    Listgraph = []
 
-gobs = nx.generators.random_graphs.powerlaw_cluster_graph(600, 1, 0.1)
+    for countg in range(noofgraphs):
+        Listgraph.append(nx.generators.random_graphs.barabasi_albert_graph(n=nodesize, m=2))
 
-Listlabel = []
-Listlabel.append(ut.get_estgraphlabel(gobs, "egr", weightflag=1))
+    return Listgraph
 
-filepath = config.datapath + 'dgl'+ fileext + "_label.pickle"
+Listgraph = generate_RandomBA(4000,1)
 
-with open(filepath, 'wb') as b:
-    pickle.dump(Listlabel, b)
+def generate_RandomER(nodesize, noofgraphs):
 
-## ================ load graph and load label ==============
+    Listgraph = []
 
-fileext = "\\plc_6000_egr_bayesian"
+    for countg in range(noofgraphs):
+        Listgraph.append(nx.generators.random_graphs.erdos_renyi_graph(n=nodesize, p=0.25))
 
-gobs = nx.read_gpickle(config.datapath + 'dgl'+ fileext+".gpickle")
+    return Listgraph
 
-with open(config.datapath + 'dgl' + fileext+ "_label.pickle", 'rb') as b:
-    Listlabel = pickle.load(b)
+Listgraph = generate_RandomER(200,1)
 
-# load graph from list of graphs
-def combine_graphs(graphlist):
-    U = nx.disjoint_union_all(graphlist)
-    return U
-
-# combine graphs one disjoint union graph
-g = combine_graphs(Listgraph)
+g = Listgraph[0]
 
 # weighted graph for influence prob
-
 for u,v,d in g.edges(data=True):
     d['weight'] = 0.5
 
-Labelarray = Listlabel[0]
-Labelarray = np.delete(Labelarray, [0])
+for node_id, node_data in g.nodes(data=True):
+    node_data["feature"] = [g.degree(node_id), nx.average_neighbor_degree(g, nodes=[node_id])[node_id], 1, 1,1]
 
-## === generate target vector by combining labels from all graphs and keep it in target data frame ============
-# specific nodes and columns
+## make data based on IFC centrality scores
 
-gobs.remove_node(2)
-nodelist = list(gobs.nodes)
-nodelist.pop(0)
+Imutils = ut.IMutil()
 
-# gen datagrame of target labels
-targetdf = pd.DataFrame()
-targetdf['metric'] = Labelarray
-targetdf['nodename'] = nodelist
-targetdf = targetdf.set_index('nodename')
+def getgraphtargetdf(Listgraph):
+    Listlabel = []
+    finaldf = pd.DataFrame(columns=['nodename', 'label'])
 
-# targetdf = bf.getgraphtargetdf(Listlabel, nodelist)
-# # targetdf.loc[targetdf.metric==0,'metric'] = 0.001
+    for countg in range(len(Listgraph)):
 
-category = pd.cut(targetdf.metric,  bins=[0,0.3,0.7,1.0], labels=[0, 1, 2])
-targetdf['metric'] = category
-plt.hist(targetdf['metric'])
+        icscore = Imutils.get_inflcapapcity(Listgraph[countg], 0.5)
+        ind = np.argsort(icscore, axis=0)
+
+        # Method of top-k %
+        class1 = ind[0:int(0.25 * len(ind))]
+        class2 = ind[int(0.25 * len(ind)): int(0.65 * len(ind))]
+        class3 = ind[int(0.65 * len(ind)): int(1.0 * len(ind))]
+
+        tempdict = {}
+        tempdict['class1'] = class1
+        tempdict['class2'] = class2
+        tempdict['class3'] = class3
+
+        Listlabel.append(tempdict)
+
+        # targetdf
+        targetdf = pd.DataFrame()
+        nodelist = list(Listgraph[countg].nodes)
+        targetdf['nodename'] = nodelist
+        targetdf['label'] = np.zeros((len(nodelist)), dtype=int)
+
+        for ind in class2[:, 0]:
+            targetdf.loc[targetdf['nodename'] == ind, 'label'] = 1
+
+        # for ind in class3[:, 0]:
+        #     targetdf.loc[targetdf['nodename'] == ind, 'label'] = 2
+
+        finaldf = pd.concat([finaldf, targetdf])
+        print("count", countg )
+
+    finaldf = finaldf.reset_index(drop=True)
+
+    return finaldf, Listlabel
+
+Listgraph = [g]
+
+targetdf, Listlabel = getgraphtargetdf(Listgraph)
+
+targetdf.drop(columns=['nodename'], inplace=True)
 
 ## assign node label to gobs
-
 for node_id, node_data in g.nodes(data=True):
     node_data["label"] = list(targetdf.loc[node_id])
 
-## ====================== assign feature vector to each graph node ==========================
-
-bf.get_graphnodefeatures(g)
-
-# save gpobs with feature and node labes
-
-fileext= "g200test"
-filepath = config.datapath +"\\ca-CSphd\\" + fileext + ".gpickle"
+##
+filepath = cnf.datapath + "\\ca-CSphd\\gER200test.gpickle"
 
 nx.write_gpickle(g, filepath)
 
+filepath = cnf.datapath + "\\ca-CSphd\\gER200test.txt"
 
-
-
+nx.write_weighted_edgelist(g, filepath)
 

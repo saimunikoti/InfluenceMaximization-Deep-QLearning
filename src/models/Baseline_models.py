@@ -3,9 +3,10 @@ import time
 import pickle
 from src.data import config as cn
 import networkx as nx
+
 ## define independent cascade model and hill climbing greedy algorithm
 
-g = nx.read_gpickle(cn.datapath + "\\ca-CSphd\\g200.gpickle")
+g = nx.read_gpickle(cn.datapath + "\\ca-CSphd\\g400test.gpickle")
 
 def IC(g, S, p=0.5, mc=500):
 
@@ -18,7 +19,7 @@ def IC(g, S, p=0.5, mc=500):
     spread = []
 
     for i in range(mc):
-        print(i)
+        # print(i)
         # Simulate propagation process
         new_active, A = S[:], S[:]
 
@@ -81,7 +82,7 @@ def greedy(g, k, candidatenodelist, p=0.5, mc=500):
 
 candidatenodes = np.arange(len(g.nodes))
 
-s, spread, timelist = greedy(g, 10, candidatenodelist = candidatenodes)
+s, spread, timelist = greedy(g, 5, candidatenodelist = candidatenodes)
 
 snew, spreadnew, timelistnew = greedy(g, 5, candidatenodelist = candidatenodes)
 
@@ -185,4 +186,104 @@ ax1.set_xticks(np.arange(1,11,1))
 plot_base(ax1, "seed","Execution time (s)", "Comparison of trivial Hill climbing greedy with proposed approach")
 plt.tight_layout()
 
+def IC(g, S, p=0.5, mc=500):
+    """
+    Input:  graph object, set of seed nodes, propagation probability
+            and the number of Monte-Carlo simulations
+    Output: average number of nodes influenced by the seed nodes
+    """
+    # Loop over the Monte-Carlo Simulations
+    spread = []
+    for i in range(mc):
 
+        # Simulate propagation process
+        new_active, A = S[:], S[:]
+
+        while new_active:
+
+            # For each newly active node, find its neighbors that become activated
+            new_ones = []
+            for node in new_active:
+                # Determine neighbors that become infected
+                np.random.seed(i)
+                outn = [n for n in g.neighbors(node)]
+                success = np.random.uniform(0, 1, len(outn)) < p
+                new_ones += list(np.extract(success, outn))
+
+            new_active = list(set(new_ones) - set(A))
+
+            # Add newly activated nodes to the set of activated nodes
+            A += new_active
+
+        spread.append(len(A))
+
+    return np.mean(spread)
+
+def get_random_fromdist(nodelist, p):
+    # choose node woth probability
+    random_variable = rv_discrete(values=(nodelist, p))
+    temp = random_variable.rvs(size=10)[1]
+    return temp
+
+def get_newprob(g, S, nodeavailable):
+
+    nodegain = []
+    # compute prob for each node
+    if len(S)!=0:
+        for node in nodeavailable:
+            Stemp = S.copy()
+            Stemp.append(node)
+            temp = IC(g, Stemp) - IC(g, S)
+            nodegain.append(temp)
+    else:
+        for node in nodeavailable:
+            Stemp = S.copy()
+            Stemp.append(node)
+            temp = IC(g, Stemp)
+            nodegain.append(temp)
+
+    den = sum(nodegain)
+    p = np.array([number / den for number in nodegain])
+
+    return p
+
+def get_probgreedy(g, tolerance=0.5):
+    nodelist = list(g.nodes)
+    gain = 10
+    S = []
+    gainlist = []
+    while gain > tolerance:
+        nodeavailable = [item for item in nodelist if item not in S]
+
+        p = get_newprob(g, S, nodeavailable)
+
+        # nodeselected = get_random_fromdist(nodeavailable, p)
+        temp = random.choices(nodeavailable, p, k=100)
+        u, count = np.unique(temp, return_counts=True)
+        count_sort_ind = np.argsort(-count)
+        nodeselected = u[count_sort_ind][0]
+
+        Snew = S.copy()
+        Snew.append(nodeselected)
+
+        # gain = p[np.where(np.array(nodelist) == nodeselected)[0][0]]
+        gain = IC(g,Snew) - IC(g,S)
+        gainlist.append(gain)
+        S = Snew.copy()
+        print("iter gain: ", gain)
+        # gain2 = gain2-0.001
+    return S
+
+def get_probcandidatenodes(Listgraph):
+
+    Stensor = []
+
+    for countg in range(len(Listgraph)):
+        Slist=[]
+        for count in range(10):
+            temp = get_probgreedy(Listgraph[countg])
+            Slist.append(temp)
+            print("=== count== ", countg, count)
+        Stensor.append(Slist)
+
+    return Stensor

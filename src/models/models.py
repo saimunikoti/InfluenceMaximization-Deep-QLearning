@@ -18,7 +18,7 @@ class GraphQNetwork(nn.Module):
         self.conv2 = dglnn.SAGEConv(
             in_feats=hid_feats, out_feats=hid_feats, aggregator_type='mean')
 
-        self.fc1 = nn.Linear(2*hid_feats, out_feats)
+        self.fc1 = nn.Linear(3*hid_feats, out_feats)
         self.dropout = nn.Dropout(0.1)
 
     def forward(self, graph, inputs, states, actions):
@@ -35,13 +35,16 @@ class GraphQNetwork(nn.Module):
         states_vector = torch.index_select(h, 0, states)
         actions_vector = torch.index_select(h, 0, actions)
 
-        # max aggregation
+        # mean aggregation
+        graph_aggvector = torch.mean(h, dim=(0), keepdim=True)
+
+        # max aggregation of RL state
         states_aggvector = torch.amax(states_vector, dim=(0), keepdim=True)
 
         # mean aggregation
         # states_aggvector = torch.mean(states_vector, dim=0)
 
-        h = torch.cat((states_aggvector, actions_vector), 1)
+        h = torch.cat((graph_aggvector, states_aggvector, actions_vector), 1)
 
         out = self.fc1(h)
 
@@ -139,9 +142,11 @@ class QNetwork(nn.Module):
 
     def forward(self, x):
         # x = state
+
         """
         Build a network that maps state -> action values.
         """
+
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         return self.fc3(x)
@@ -196,7 +201,11 @@ class genv():
         self.next_state=[]
         self.spreadlist =[]
 
-        self.candnodelist = self.candidatenodelist.copy()
+        # select random graph from list of graph
+
+        gindex = random.choice(np.arange(0, len(self.graphlist)))
+
+        self.candnodelist = self.candidatenodelist[gindex].copy()
 
         start_node = random.choice(self.candnodelist)
         self.candnodelist.remove(start_node)
@@ -205,17 +214,19 @@ class genv():
         self.next_state.append(start_node)
         state = self.state.copy()
 
-        self.spreadlist.append(self.IC(g=self.graphlist[0], S=state))
+        self.spreadlist.append(self.IC(g=self.graphlist[gindex], S=state))
 
-        return state, self.candnodelist
+        return state, self.candnodelist, gindex
 
     def knownreset(self, start_node):
 
         self.state = []
         self.next_state = []
         self.spreadlist =[]
+        # select random graph from list of graph
+        gindex = random.choice(np.arange(0, len(self.graphlist)))
 
-        self.candnodelist = self.candidatenodelist.copy()
+        self.candnodelist = self.candidatenodelist[gindex].copy()
 
         self.candnodelist.remove(start_node)
 
@@ -223,11 +234,11 @@ class genv():
         self.next_state.append(start_node)
         state = self.state.copy()
 
-        self.spreadlist.append(self.IC(g=self.graphlist[0], S=state))
+        self.spreadlist.append(self.IC(g=self.graphlist[gindex], S=state))
 
-        return state, self.candnodelist
+        return state, self.candnodelist, gindex
 
-    def step(self, action):
+    def step(self, action, gindex):
 
         # update candidate node list and next_state
         self.candnodelist.remove(action)
@@ -237,7 +248,7 @@ class genv():
 
         # print(next_state)
         # reward
-        self.spreadlist.append(self.IC(g= self.graphlist[0], S=next_state))
+        self.spreadlist.append(self.IC(g= self.graphlist[gindex], S=next_state))
         reward = self.spreadlist[-1]-self.spreadlist[-2]
 
         # episode termination criterion

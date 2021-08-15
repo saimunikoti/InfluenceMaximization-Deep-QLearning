@@ -4,13 +4,13 @@ from collections import namedtuple, deque
 import dgl
 ##Importing the model (function approximator for Q-table)
 from src.models.models import GraphQNetwork
-
+import pickle
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
 
-BUFFER_SIZE = 256     # replay buffer size
-BATCH_SIZE = 16        # minibatch size
+BUFFER_SIZE = 1000     # replay buffer size
+BATCH_SIZE = 16    # minibatch size
 GAMMA = 0.95           # discount factor
 TAU = 1e-3             # for soft update of target parameters
 LR = 1e-3              # learning rate
@@ -31,7 +31,7 @@ class Agent():
             action_size (int): dimension of each action
             seed (int): random seed
         """
-        self.graphlist = [dgl.from_networkx(glist[ind], node_attrs=['feature', 'label']).to(device) for ind in range(len(glist))]
+        self.graphlist = [dgl.from_networkx(glist[ind], node_attrs=['feature']).to(device) for ind in range(len(glist))]
         self.seed = random.seed(seed)
         self.candidatenodelist = candnodelist
 
@@ -45,6 +45,9 @@ class Agent():
         self.memory = ReplayBuffer(BUFFER_SIZE,BATCH_SIZE,seed)
         # Initialize time step (for updating every UPDATE_EVERY steps)
         self.t_step = 0
+
+        # training loss
+        self.trainloss = []
         
     def step(self, state, action, reward, next_step, done):
 
@@ -61,10 +64,10 @@ class Agent():
                 experience = self.memory.sample()
                 self.learn(experience, GAMMA)
 
-    def train(self, state, action, reward, next_step, done):
+    def train(self, state, action, reward, next_step, done, gindex):
 
         # Save experience in replay memory
-        self.memory.add(state, action, reward, next_step, done)
+        self.memory.add(state, action, reward, next_step, done, gindex)
         # print("state, action, reward, next_state", state, action, reward, next_step)
         # print("state, action, reward, next_state", state, action, reward, next_step)
 
@@ -75,12 +78,28 @@ class Agent():
             experience = self.memory.sample()
             self.learn(experience, GAMMA)
 
-    def save_buffer(self, state, action, reward, next_step, done):
+    def get_filledbuffer(self):
+        experience = self.memory.sample(batch_size=BUFFER_SIZE)
+        return experience
+
+    def load_filledbuffer(self, filledbuffer):
+
+        statelist = [list(element) for element in filledbuffer[0].cpu().data.numpy()]
+        rewardlist = [element[0] for element in filledbuffer[2].cpu().data.numpy()]
+        next_statelist = [list(element) for element in filledbuffer[3].cpu().data.numpy()]
+        donelist = [element[0] for element in filledbuffer[4].cpu().data.numpy()]
+        gindexlist = [element[0] for element in filledbuffer[5].cpu().data.numpy()]
+        exp = (statelist, filledbuffer[1], rewardlist, next_statelist, donelist, gindexlist)
+
+        for state, action, reward, next_step, done, gindex in zip(exp[0], exp[1], exp[2], exp[3], exp[4], exp[5]):
+            self.memory.add(state, action, reward, next_step, done, gindex)
+
+    def save_buffer(self, state, action, reward, next_step, done, gindex):
 
         # Save experience in replay memory
-        self.memory.add(state, action, reward, next_step, done)
+        self.memory.add(state, action, reward, next_step, done, gindex)
 
-    def act(self, state, candnodelist, eps = 0):
+    def act(self, state, candnodelist, gindex, eps = 0):
 
         """Returns action for given state as per current policy
 
@@ -99,12 +118,12 @@ class Agent():
         action_values = []
 
         self.qnetwork_local.eval()
-        train_nfeat = self.graphlist[0].ndata['feature']
+        train_nfeat = self.graphlist[gindex].ndata['feature']
         train_nfeat = torch.tensor(train_nfeat).to(device)
 
         with torch.no_grad():
             for action in candnodelist:
-                action_values.append(self.qnetwork_local(self.graphlist[0], train_nfeat, state, action).cpu().data.numpy())
+                action_values.append(self.qnetwork_local(self.graphlist[gindex], train_nfeat, state, action).cpu().data.numpy())
 
         self.qnetwork_local.train()
 
@@ -126,10 +145,11 @@ class Agent():
 
             gamma (float): discount factor
         """
-        states, actions, rewards, next_states, dones = experiences
+        states, actions, rewards, next_states, dones, gindexs = experiences
         # print("states, actions, rewards, next_states", states.shape, actions.shape, rewards.shape, next_states.shape)
 
         ## TODO: compute and minimize the loss
+
         criterion = torch.nn.MSELoss()
         # Local model is one which we need to train so it's in training mode
         self.qnetwork_local.train()
@@ -140,12 +160,13 @@ class Agent():
 
         # predicted_targets = []
         # #shape of output from the model (batch_size,action_dim) = (64,4)
-        train_nfeat = self.graphlist[0].ndata['feature']
+        # train_nfeat = self.graphlist[gindex].ndata['feature']
 
-        for count, (count_state, count_action) in enumerate(zip(states, actions)):
+        for count, (count_state, count_action, gindex) in enumerate(zip(states, actions, gindexs)):
 
             ## predicted_targets.append(self.qnetwork_local(self.graphlist[0], train_nfeat, count_state, count_action).item())
-            temp_pred = self.qnetwork_local(self.graphlist[0], train_nfeat, count_state, count_action)
+            gindex = int(gindex.item())
+            temp_pred = self.qnetwork_local(self.graphlist[gindex], self.graphlist[gindex].ndata['feature'], count_state, count_action)
 
             if count == 0:
                 predicted_targets = temp_pred.clone()
@@ -159,8 +180,9 @@ class Agent():
 
         with torch.no_grad():
             labels_next = []
-            for counts, count_state in enumerate(next_states):
-                candnodes = self.candidatenodelist.copy()
+            for counts, (count_state, gindex) in enumerate(zip(next_states, gindexs)):
+                gindex = int(gindex.item())
+                candnodes = self.candidatenodelist[gindex].copy()
                 candnodes = [ele for ele in candnodes if ele not in count_state]
                 candnodes = torch.tensor(candnodes).to(device)
 
@@ -168,12 +190,13 @@ class Agent():
                 for counta, count_action in enumerate(candnodes):
                     # temp_label.append(self.qnetwork_target(self.graphlist[0], train_nfeat, count_state, count_action).item())
                     if counta == 0:
-                        temp_label = self.qnetwork_target(self.graphlist[0], train_nfeat, count_state, count_action)
+                        temp_label = self.qnetwork_target(self.graphlist[gindex], self.graphlist[gindex].ndata['feature'], count_state, count_action)
                     else:
-                        temp_label = torch.cat([temp_label, self.qnetwork_target(self.graphlist[0], train_nfeat, count_state, count_action)], dim=0)
+                        temp_label = torch.cat([temp_label, self.qnetwork_target(self.graphlist[gindex], self.graphlist[gindex].ndata['feature'], count_state, count_action)], dim=0)
 
                 # labels_next.append(max(temp_label))
                 temp_label = torch.reshape(torch.max(temp_label), (1,1))
+
                 if counts == 0:
                     labels_next = temp_label
                 else:
@@ -190,6 +213,7 @@ class Agent():
         # predicted_targets = torch.tensor(predicted_targets)
 
         loss = criterion(predicted_targets, labels).to(device)
+        self.trainloss.append(loss.item())
 
         self.optimizer.zero_grad()
         loss.backward()
@@ -235,18 +259,19 @@ class ReplayBuffer:
                                                                "action",
                                                                "reward",
                                                                "next_state",
-                                                               "done"])
+                                                               "done",
+                                                                "gindex"])
         self.seed = random.seed(seed)
         
-    def add(self,state, action, reward, next_state,done):
+    def add(self,state, action, reward, next_state,done, gindex):
         """Add a new experience to memory."""
-        e = self.experiences(state,action,reward,next_state,done)
+        e = self.experiences(state,action,reward,next_state, done, gindex)
         self.memory.append(e)
-        
-    def sample(self):
+
+    def sample(self, batch_size=BATCH_SIZE):
 
         """Randomly sample a batch of experiences from memory"""
-        experiences = random.sample(self.memory, k=self.batch_size)
+        experiences = random.sample(self.memory, k=batch_size)
         
         # states = torch.tensor(torch.tensor([e.state for e in experiences if e is not None])).float().to(device)
         # states = torch.from_numpy(np.vstack([e.state.item() for e in experiences if e is not None])).float().to(device)
@@ -261,6 +286,8 @@ class ReplayBuffer:
         actions = torch.from_numpy(np.vstack([e.action.item() for e in experiences if e is not None])).long().to(device)
 
         rewards = torch.from_numpy(np.vstack([e.reward for e in experiences if e is not None])).float().to(device)
+        # gindex
+        gindexs = torch.from_numpy(np.vstack([e.gindex for e in experiences if e is not None])).float().to(device)
 
         # next_states = torch.from_numpy(np.vstack([e.next_state for e in experiences if e is not None])).float().to(device)
         # next_states = np.array([torch.tensor(e.next_state).to(device) for e in experiences if e is not None])
@@ -274,8 +301,11 @@ class ReplayBuffer:
 
         dones = torch.from_numpy(np.vstack([e.done for e in experiences if e is not None]).astype(np.uint8)).float().to(device)
         
-        return (states,actions,rewards,next_states,dones)
+        return (states,actions,rewards,next_states,dones, gindexs)
 
     def __len__(self):
         """Return the current size of internal memory."""
         return len(self.memory)
+
+    def get_memory(self):
+        return self.memory

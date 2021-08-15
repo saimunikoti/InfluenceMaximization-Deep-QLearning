@@ -6,16 +6,24 @@ from tqdm import tqdm
 from src.models.models import genv
 from src.data import config as cnf
 import networkx as nx
+import time as time
+import pickle
 
 ## define environment
 
 in_feats = 5
 hid_feats = 64
 budget = 5
-g = nx.read_gpickle(cnf.datapath + "\\ca-CSphd\\g400test.gpickle")
-Listgraph = [g]
+g1 = nx.read_gpickle(cnf.datapath + "\\ca-CSphd\\g200test.gpickle")
+g2 = nx.read_gpickle(cnf.datapath + "\\ca-CSphd\\g400test.gpickle")
+g3 = nx.read_gpickle(cnf.datapath + "\\ca-CSphd\\g1ktest.gpickle")
+g4 = nx.read_gpickle(cnf.datapath + "\\ca-CSphd\\g200BAtest.gpickle")
+g5 = nx.read_gpickle(cnf.datapath + "\\ca-CSphd\\g400BAtest.gpickle")
+g6 = nx.read_gpickle(cnf.datapath + "\\ca-CSphd\\g1kBAtest.gpickle")
 
-candnodelist = list(g.nodes)
+Listgraph = [g1,g2,g3, g4,g5,g6]
+
+candnodelist = [ list(gind.nodes) for gind in Listgraph ]
 
 agent = Agent( Listgraph, in_feats, hid_feats, candnodelist, seed=0)
 model = agent.qnetwork_local
@@ -27,7 +35,7 @@ genv = genv( Listgraph, candnodelist, budget)
 
 ## define main function for running algorithm
 
-def dqn(checkpointpath, n_episodes= 100, eps_start=1.0, eps_end = 0.05, decay_step=0.0002, exp_replay_size=256):
+def dqn(checkpointpath, n_episodes = 200, eps_start=1.0, eps_end = 0.05, decay_step=0.0002, exp_replay_size=1000, buffer_flag=1):
 
     """Deep Q-Learning
     
@@ -41,28 +49,46 @@ def dqn(checkpointpath, n_episodes= 100, eps_start=1.0, eps_end = 0.05, decay_st
         exp_replay_size: buffer size
     """
 
-    # ====== initialoze experience replay buffer ======
+    # ====== initialize experience replay buffer ======
 
     index = 0
+    st = time.time()
 
-    for i in range(exp_replay_size):
+    if buffer_flag == 0:
 
-        state, candnodelist = genv.reset()
-        done = False
-        forbreak=0
-        while not done:
-            action = agent.act(state, candnodelist, eps=1)
-            next_step, reward, done = genv.step(action)
-            agent.save_buffer(state, action, reward, next_step, done)
-            # agent.memory.memory
-            state = next_step.copy()
-            print(index)
-            index += 1
-            if index > exp_replay_size:
-                forbreak=1
-                break
-        if forbreak==1:
-                break
+        for i in range(exp_replay_size):
+
+            state, candnodelist, gindex = genv.reset()
+            done = False
+            forbreak = 0
+            while not done:
+                action = agent.act(state, candnodelist, gindex, eps=1)
+                next_step, reward, done = genv.step(action, gindex)
+                agent.save_buffer(state, action, reward, next_step, done, gindex)
+                # agent.memory.memory
+                state = next_step.copy()
+                print(index)
+                index += 1
+                if index > exp_replay_size:
+                    forbreak=1
+                    break
+            if forbreak == 1:
+                    break
+
+        # save filled buffer as pcile file
+        filledbuffer = agent.get_filledbuffer()
+
+        with open(cnf.datapath + "\\ca-CSphd\\filledbufferPLC-BA.pickle", 'wb') as f:
+            pickle.dump(filledbuffer, f)
+
+    else:
+        # load saved data into replaybuffer
+        with open(cnf.datapath + "\\ca-CSphd\\filledbufferPLC-BA.pickle", 'rb') as f:
+            filledbuffer = pickle.load(f)
+
+        agent.load_filledbuffer(filledbuffer)
+
+    print("buffer loading time: ", time.time()-st)
 
     #===== main loop for training ====
 
@@ -72,24 +98,29 @@ def dqn(checkpointpath, n_episodes= 100, eps_start=1.0, eps_end = 0.05, decay_st
     scores_window_prev.append(-9999) # large negative number for initializing previous start window
 
     eps = eps_start
+    st = time.time()
 
     for i_episode in tqdm(range(1, n_episodes+1)):
-        print("episode: ", i_episode)
-        state, candnodelist = genv.reset()
+        print("eps: ", i_episode)
+        print("mean s", np.mean(scores_window))
+        print("mean l", np.mean(agent.trainloss[-5:]))
+
+        state, candnodelist, gindex = genv.reset()
         score = 0
         done = 0
 
         while not done:
 
-            action = agent.act(state, candnodelist, eps)
+            action = agent.act(state, candnodelist, gindex, eps)
 
-            next_state, reward, done = genv.step(action)
+            next_state, reward, done = genv.step(action, gindex)
 
             # print("state, action, reward, next_state", state, action, reward, next_state)
 
-            agent.train(state, action, reward, next_state, done)
+            agent.train(state, action, reward, next_state, done, gindex)
 
             state = next_state
+
             score += reward
 
             scores_window.append(score) ## save the most recent score
@@ -108,9 +139,12 @@ def dqn(checkpointpath, n_episodes= 100, eps_start=1.0, eps_end = 0.05, decay_st
                 torch.save(agent.qnetwork_local.state_dict(), checkpointpath)
                 break
 
+    print("training time: ", time.time() - st)
     return scores
 
-checkpointpth = cnf.modelpath + "\\checkpoint_infmaxv2.pth"
+checkpointpth = cnf.modelpath + "\\checkpoint_multigraph_200.pth"
 
 scores = dqn(checkpointpath=checkpointpth)
+
+##
 
