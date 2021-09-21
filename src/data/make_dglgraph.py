@@ -7,6 +7,7 @@ import pandas as pd
 import matplotlib
 matplotlib.use('TkAgg')
 
+
 def generate_RandomPLC(nodesize, noofgraphs):
     Listgraph=[]
 
@@ -14,7 +15,7 @@ def generate_RandomPLC(nodesize, noofgraphs):
         Listgraph.append(nx.generators.random_graphs.powerlaw_cluster_graph(nodesize, 2, 0.05))
     return Listgraph
 
-Listgraph = generate_RandomPLC(4000,1)
+Listgraph = generate_RandomPLC(1000,1)
 
 def generate_RandomBA(nodesize, noofgraphs):
 
@@ -38,6 +39,19 @@ def generate_RandomER(nodesize, noofgraphs):
 
 Listgraph = generate_RandomER(200,1)
 
+def generate_RandomLFR(nodesize, noofgraphs):
+
+    Listgraph = []
+
+    for countg in range(noofgraphs):
+        Listgraph.append(nx.generators.community.LFR_benchmark_graph(
+        n=nodesize, tau1=3, tau2=1.5, mu=0.5, average_degree=15, min_community=30, seed=10
+        ))
+
+    return Listgraph
+
+Listgraph = generate_RandomLFR(1000,1)
+
 g = Listgraph[0]
 
 # weighted graph for influence prob
@@ -46,6 +60,10 @@ for u,v,d in g.edges(data=True):
 
 for node_id, node_data in g.nodes(data=True):
     node_data["feature"] = [g.degree(node_id), nx.average_neighbor_degree(g, nodes=[node_id])[node_id], 1, 1,1]
+    node_data["alpha"] = np.random.uniform(0, 1)
+
+# get random subgraphs
+Listrandomgraph = ut.get_randomsubgraph(g,100)
 
 ## make data based on IFC centrality scores
 
@@ -97,14 +115,16 @@ targetdf, Listlabel = getgraphtargetdf(Listgraph)
 
 targetdf.drop(columns=['nodename'], inplace=True)
 
-## assign node label to gobs
+## assign node label and intrinsic probabilityto gobs
+
 for node_id, node_data in g.nodes(data=True):
     node_data["label"] = list(targetdf.loc[node_id])
+    node_data["alpha"] = np.random.uniform(0,1)
 
 ##
-filepath = cnf.datapath + "\\ca-CSphd\\gER200test.gpickle"
+filepath = cnf.datapath + "\\ca-CSphd\\g1ktest.gpickle"
 
-nx.write_gpickle(g, filepath)
+nx.write_gpickle(g, filepath, protocol=4)
 
 filepath = cnf.datapath + "\\ca-CSphd\\gER200test.txt"
 

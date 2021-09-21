@@ -4,16 +4,15 @@ from collections import namedtuple, deque
 import dgl
 ##Importing the model (function approximator for Q-table)
 from src.models.models import GraphQNetwork
-import pickle
+from src.data import config as cnf
 import torch
-import torch.nn.functional as F
 import torch.optim as optim
 
 BUFFER_SIZE = 1000     # replay buffer size
-BATCH_SIZE = 16    # minibatch size
+BATCH_SIZE = 64    # minibatch size
 GAMMA = 0.95           # discount factor
 TAU = 1e-3             # for soft update of target parameters
-LR = 1e-3              # learning rate
+LR = 0.001              # learning rate
 UPDATE_EVERY = 1       # how often to update the network
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -21,7 +20,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 class Agent():
     """Interacts with and learns form environment."""
     
-    def __init__(self, glist, in_feats, hid_feats, candnodelist, seed):
+    def __init__(self, glist, in_feats, hid_feats, candnodelist, seed, trainmodel_flag=0):
 
         """Initialize an Agent object.
 
@@ -38,11 +37,20 @@ class Agent():
         #Q- Network
         self.qnetwork_local = GraphQNetwork(in_feats= in_feats, hid_feats=hid_feats).to(device)
         self.qnetwork_target = GraphQNetwork(in_feats= in_feats, hid_feats=hid_feats).to(device)
-        
-        self.optimizer = optim.Adam(self.qnetwork_local.parameters(),lr=LR)
+
+        # LOAD PRETRAINED MODEL WEI
+
+        if trainmodel_flag == 1:
+            checkpointpath = cnf.modelpath + "\checkpoint_AIM_wtreward.pth"
+            self.qnetwork_local.load_state_dict(torch.load(checkpointpath))
+            self.qnetwork_target.load_state_dict(torch.load(checkpointpath))
+            print("=== trained model successfully loaded===")
+
+        self.optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=LR)
         
         # Replay memory 
         self.memory = ReplayBuffer(BUFFER_SIZE,BATCH_SIZE,seed)
+
         # Initialize time step (for updating every UPDATE_EVERY steps)
         self.t_step = 0
 
@@ -64,40 +72,48 @@ class Agent():
                 experience = self.memory.sample()
                 self.learn(experience, GAMMA)
 
-    def train(self, state, action, reward, next_step, done, gindex):
+    def train(self, state, action, reward, next_step, done, gindex, reward1, reward2):
 
         # Save experience in replay memory
-        self.memory.add(state, action, reward, next_step, done, gindex)
+        self.memory.add(state, action, reward, next_step, done, gindex, reward1, reward2)
         # print("state, action, reward, next_state", state, action, reward, next_step)
         # print("state, action, reward, next_state", state, action, reward, next_step)
 
         # train every UPDATE_EVERY time steps.
-        self.t_step = (self.t_step+1) % UPDATE_EVERY
+        # self.t_step = (self.t_step+1) % UPDATE_EVERY
 
-        if self.t_step == 0:
-            experience = self.memory.sample()
-            self.learn(experience, GAMMA)
+        # if self.t_step == 0:
+        experience = self.memory.sample()
+        self.learn(experience, GAMMA)
 
     def get_filledbuffer(self):
         experience = self.memory.sample(batch_size=BUFFER_SIZE)
         return experience
 
+    def get_filledbuffer_wopadding(self):
+        experience = self.memory.get_memory()
+        return experience
+
+    def get_newmaxreward(self, avg_reward):
+        return self.memory.update_avgreward(avg_reward)
+
     def load_filledbuffer(self, filledbuffer):
 
         statelist = [list(element) for element in filledbuffer[0].cpu().data.numpy()]
         rewardlist = [element[0] for element in filledbuffer[2].cpu().data.numpy()]
+        rewardlist1 = [element[0] for element in filledbuffer[6].cpu().data.numpy()]
+        rewardlist2 = [element[0] for element in filledbuffer[7].cpu().data.numpy()]
         next_statelist = [list(element) for element in filledbuffer[3].cpu().data.numpy()]
         donelist = [element[0] for element in filledbuffer[4].cpu().data.numpy()]
         gindexlist = [element[0] for element in filledbuffer[5].cpu().data.numpy()]
-        exp = (statelist, filledbuffer[1], rewardlist, next_statelist, donelist, gindexlist)
+        exp = (statelist, filledbuffer[1], rewardlist, next_statelist, donelist, gindexlist, rewardlist1,rewardlist2)
 
-        for state, action, reward, next_step, done, gindex in zip(exp[0], exp[1], exp[2], exp[3], exp[4], exp[5]):
-            self.memory.add(state, action, reward, next_step, done, gindex)
+        for state, action, reward, next_step, done, gindex, reward1, reward2 in zip(exp[0], exp[1], exp[2], exp[3], exp[4], exp[5], exp[6], exp[7]):
+            self.memory.add(state, action, reward, next_step, done, gindex, reward1, reward2)
 
-    def save_buffer(self, state, action, reward, next_step, done, gindex):
-
+    def save_buffer(self, state, action, reward, next_step, done, gindex, reward1, reward2):
         # Save experience in replay memory
-        self.memory.add(state, action, reward, next_step, done, gindex)
+        self.memory.add(state, action, reward, next_step, done, gindex, reward1,reward2)
 
     def act(self, state, candnodelist, gindex, eps = 0):
 
@@ -145,7 +161,8 @@ class Agent():
 
             gamma (float): discount factor
         """
-        states, actions, rewards, next_states, dones, gindexs = experiences
+
+        states, actions, rewards, next_states, dones, gindexs, rewards1, rewards2 = experiences
         # print("states, actions, rewards, next_states", states.shape, actions.shape, rewards.shape, next_states.shape)
 
         ## TODO: compute and minimize the loss
@@ -178,6 +195,8 @@ class Agent():
         # print("predicted_targets raw", self.qnetwork_local(states).shape)
         # print("predicted_targets processed", predicted_targets.shape)
 
+        self.qnetwork_local.eval()
+
         with torch.no_grad():
             labels_next = []
             for counts, (count_state, gindex) in enumerate(zip(next_states, gindexs)):
@@ -190,22 +209,26 @@ class Agent():
                 for counta, count_action in enumerate(candnodes):
                     # temp_label.append(self.qnetwork_target(self.graphlist[0], train_nfeat, count_state, count_action).item())
                     if counta == 0:
-                        temp_label = self.qnetwork_target(self.graphlist[gindex], self.graphlist[gindex].ndata['feature'], count_state, count_action)
+                        actions_qlocal = self.qnetwork_local(self.graphlist[gindex], self.graphlist[gindex].ndata['feature'], count_state, count_action)
                     else:
-                        temp_label = torch.cat([temp_label, self.qnetwork_target(self.graphlist[gindex], self.graphlist[gindex].ndata['feature'], count_state, count_action)], dim=0)
+                        actions_qlocal = torch.cat([actions_qlocal, self.qnetwork_local(self.graphlist[gindex], self.graphlist[gindex].ndata['feature'], count_state, count_action)], dim=0)
 
                 # labels_next.append(max(temp_label))
-                temp_label = torch.reshape(torch.max(temp_label), (1,1))
+                actions_qlocal = torch.argmax(actions_qlocal)
+
+                temp_label = self.qnetwork_target(self.graphlist[gindex], self.graphlist[gindex].ndata['feature'], count_state, actions_qlocal)
+                # temp_label = torch.reshape(torch.max(temp_label), (1,1))
 
                 if counts == 0:
                     labels_next = temp_label
                 else:
                     labels_next = torch.cat([labels_next, temp_label], dim=0)
                 try:
-                    del temp_label
+                    del temp_label, actions_qlocal
                 except:
                     pass
 
+        self.qnetwork_local.train()
         # .detach() ->  Returns a new Tensor, detached from the current graph.
         # labels = torch.tensor([rewards[ind] + (gamma*labels_next[ind]*(1-dones[ind])) for ind in range(int(states.shape[0])) ])
         # labels = torch.tensor([rewards[ind] + (gamma*labels_next[ind]*(1-dones[ind])) for ind in range(int(states.shape[0])) ])
@@ -239,6 +262,7 @@ class Agent():
             target_param.data.copy_(tau*local_param.data + (1-tau)*target_param.data)
 
 class ReplayBuffer:
+
     """Fixed -size buffer to store experience tuples."""
     
     def __init__(self, buffer_size, batch_size, seed):
@@ -260,12 +284,14 @@ class ReplayBuffer:
                                                                "reward",
                                                                "next_state",
                                                                "done",
-                                                                "gindex"])
+                                                                "gindex",
+                                                                 "reward1",
+                                                                 "reward2"])
         self.seed = random.seed(seed)
         
-    def add(self,state, action, reward, next_state,done, gindex):
+    def add(self,state, action, reward, next_state,done, gindex,reward1,reward2):
         """Add a new experience to memory."""
-        e = self.experiences(state,action,reward,next_state, done, gindex)
+        e = self.experiences(state,action,reward,next_state, done, gindex, reward1,reward2)
         self.memory.append(e)
 
     def sample(self, batch_size=BATCH_SIZE):
@@ -277,15 +303,20 @@ class ReplayBuffer:
         # states = torch.from_numpy(np.vstack([e.state.item() for e in experiences if e is not None])).float().to(device)
         # states = np.array([torch.tensor(e.state).to(device) for e in experiences if e is not None])
         temp = [(e.state) for e in experiences if e is not None]
+
         max_cols = max([len(batch) for batch in temp ])
         # NEEDS CHANGES IF AGGREGATION OF STATE VECTOR FUNCTION CHNAGES FROM MAXIMUM FUNCTION
         padded = [batch + [batch[0]]*(max_cols - len(batch)) for batch in temp]
+
         states = torch.tensor(padded).to(device)
 
         # actions = torch.from_numpy(np.vstack([e.action for e in experiences if e is not None])).long().to(device)
         actions = torch.from_numpy(np.vstack([e.action.item() for e in experiences if e is not None])).long().to(device)
 
         rewards = torch.from_numpy(np.vstack([e.reward for e in experiences if e is not None])).float().to(device)
+        rewards1 = torch.from_numpy(np.vstack([e.reward1 for e in experiences if e is not None])).float().to(device)
+        rewards2 = torch.from_numpy(np.vstack([e.reward2 for e in experiences if e is not None])).float().to(device)
+
         # gindex
         gindexs = torch.from_numpy(np.vstack([e.gindex for e in experiences if e is not None])).float().to(device)
 
@@ -301,11 +332,64 @@ class ReplayBuffer:
 
         dones = torch.from_numpy(np.vstack([e.done for e in experiences if e is not None]).astype(np.uint8)).float().to(device)
         
-        return (states,actions,rewards,next_states,dones, gindexs)
+        return (states,actions,rewards,next_states,dones, gindexs, rewards1, rewards2)
+
+    def get_memory(self):
+
+        """ sample a wholebatch of experiences from memory"""
+        experiences = self.memory
+
+        # states = torch.tensor(torch.tensor([e.state for e in experiences if e is not None])).float().to(device)
+        # states = torch.from_numpy(np.vstack([e.state.item() for e in experiences if e is not None])).float().to(device)
+        # states = np.array([torch.tensor(e.state).to(device) for e in experiences if e is not None])
+        states = [(e.state) for e in experiences if e is not None]
+
+        # max_cols = max([len(batch) for batch in temp])
+        # NEEDS CHANGES IF AGGREGATION OF STATE VECTOR FUNCTION CHNAGES FROM MAXIMUM FUNCTION
+        # padded = [batch + [batch[0]] * (max_cols - len(batch)) for batch in temp]
+
+        # states = torch.tensor(temp).to(device)
+
+        # actions = torch.from_numpy(np.vstack([e.action for e in experiences if e is not None])).long().to(device)
+        actions = torch.from_numpy(np.vstack([e.action.item() for e in experiences if e is not None])).long().to(device)
+
+        rewards = torch.from_numpy(np.vstack([e.reward for e in experiences if e is not None])).float().to(device)
+        rewards1 = torch.from_numpy(np.vstack([e.reward1 for e in experiences if e is not None])).float().to(device)
+        rewards2 = torch.from_numpy(np.vstack([e.reward2 for e in experiences if e is not None])).float().to(device)
+
+        # gindex
+        gindexs = torch.from_numpy(np.vstack([e.gindex for e in experiences if e is not None])).float().to(device)
+
+        # next_states = torch.from_numpy(np.vstack([e.next_state for e in experiences if e is not None])).float().to(device)
+        # next_states = np.array([torch.tensor(e.next_state).to(device) for e in experiences if e is not None])
+
+        next_states = [(e.next_state) for e in experiences if e is not None]
+
+        # max_cols = max([len(batch) for batch in tempns])
+        # NEEDS CHANGES IF AGGREGATION OF STATE VECTOR FUNCTION CHNAGES FROM MAXIMUM FUNCTION
+        # paddedns = [batch + [batch[0]] * (max_cols - len(batch)) for batch in tempns]
+        # next_states = torch.tensor(tempns).to(device)
+
+        dones = torch.from_numpy(np.vstack([e.done for e in experiences if e is not None]).astype(np.uint8)).float().to(
+            device)
+
+        return (states, actions, rewards, next_states, dones, gindexs, rewards1, rewards2)
+
+    def update_avgreward(self, avg_reward):
+        """Randomly sample a batch of experiences from memory"""
+        # experiences = random.sample(self.memory, k=batch_size)
+        experiences = self.memory
+        max_reward = avg_reward.copy()
+        for cgraph in range(6):
+            for cstate in range(1,5):
+                listexp = [ind for ind in experiences if len(ind.state)== cstate and ind.gindex== cgraph ]
+                if len(listexp) == 0:
+                    continue
+                max_reward[cgraph, cstate-1] = np.max([e.reward for e in listexp])
+
+        return max_reward
 
     def __len__(self):
         """Return the current size of internal memory."""
         return len(self.memory)
 
-    def get_memory(self):
-        return self.memory

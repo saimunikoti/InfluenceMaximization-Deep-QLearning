@@ -6,8 +6,93 @@ import networkx as nx
 
 ## define independent cascade model and hill climbing greedy algorithm
 
-g = nx.read_gpickle(cn.datapath + "\\ca-CSphd\\g400test.gpickle")
+g = nx.read_gpickle(cn.datapath + "\\ca-CSphd\\g1ktest.gpickle")
 
+def mIC(g, S, p=0.5,mc=500):
+
+    """
+    Input:  graph object, set of seed nodes, propagation probability
+            and the number of Monte-Carlo simulations
+    Output: average number of nodes influenced by the seed nodes
+    """
+    # Loop over the Monte-Carlo Simulations
+    spread = []
+
+    new_active, A = S[:], S[:]
+
+    while new_active:
+
+        # For each newly active node, find its neighbors that become activated
+        new_ones = []
+
+        for node in new_active:
+            # Determine neighbors that become infected
+            # np.random.seed(1)
+            outn = [n for n in g.neighbors(node)]
+            success = np.random.uniform(0, 1, len(outn)) < p
+            new_ones += list(np.extract(success, outn))
+
+        new_active = list(set(new_ones) - set(A))
+
+        # Add newly activated nodes to the set of activated nodes
+        A += new_active
+
+    spread.append(len(A))
+
+    return np.mean(spread)
+
+def aim_greedy(g, k, candidatenodelist, p=0.5, mc=200):
+
+    """
+    Input:  graph object, number of seed nodes
+    Output: optimal seed set, resulting spread, time for each iteration
+    """
+
+    S, spread, timelapse, start_time = [], [], [], time.time()
+    # S, spread, timelapse = [], [], []
+
+    # Find k nodes with largest marginal gain
+    for countb in range(k):
+        # print("node", countb)
+        # Loop over nodes that are not yet in seed set to find biggest marginal gain
+        best_spread = 0
+
+        for j in set(candidatenodelist) - set(S):
+            s = []
+            for count in range(mc):
+
+                np.random.seed(count)
+
+                if np.random.uniform(0, 1) < g.nodes[j]['alpha']:
+
+                    # Get the spread
+                    s.append( mIC(g, S + [j], p=0.5, mc=100))
+
+            # Update the winning node and spread so far
+            if np.sum(s) >= best_spread:
+                best_spread = np.sum(s)
+                best_node = j
+
+        # Add the selected node to the seed set
+        S.append(best_node)
+
+        # Add estimated spread and elapsed time
+        spread.append(best_spread)
+        timelapse.append(time.time() - start_time)
+        print("k", countb)
+
+    return S, spread, timelapse
+
+candidatenodes = np.arange(len(g.nodes))
+
+#==== WEIGHT NEW NETWORK ===
+
+# for u,d in g.nodes(data=True):
+#     d['alpha'] = np.random.uniform(0, 1)
+
+s, spread, timelist = aim_greedy(g, 5, candidatenodelist = candidatenodes)
+
+##
 def IC(g, S, p=0.5, mc=500):
 
     """
@@ -45,6 +130,7 @@ def IC(g, S, p=0.5, mc=500):
     return np.mean(spread)
 
 def greedy(g, k, candidatenodelist, p=0.5, mc=500):
+
     """
     Input:  graph object, number of seed nodes
     Output: optimal seed set, resulting spread, time for each iteration
@@ -63,7 +149,7 @@ def greedy(g, k, candidatenodelist, p=0.5, mc=500):
 
         for j in set(candidatenodelist) - set(S):
 
-            # Get the spread
+            # Get the expected spread
             s = IC(g, S + [j], p, mc)
 
             # Update the winning node and spread so far
@@ -84,14 +170,15 @@ candidatenodes = np.arange(len(g.nodes))
 
 s, spread, timelist = greedy(g, 5, candidatenodelist = candidatenodes)
 
+##
 snew, spreadnew, timelistnew = greedy(g, 5, candidatenodelist = candidatenodes)
 
-with open(cn.datapath + "\\ca-CSphd\\S400_10nodes.pickle", 'wb') as b:
+with open(cn.datapath + "\\ca-CSphd\\S2k_10nodes.pickle", 'wb') as b:
     pickle.dump(s, b)
-with open(cn.datapath + "\\ca-CSphd\\Spread400_10nodes.pickle", 'wb') as b:
+with open(cn.datapath + "\\ca-CSphd\\Spread2k_10nodes.pickle", 'wb') as b:
     pickle.dump(spread, b)
-with open(cn.datapath + "\\ca-CSphd\\time400_10nodes.pickle", 'wb') as b:
-        pickle.dump(timelist, b)
+with open(cn.datapath + "\\ca-CSphd\\time2k_10nodes.pickle", 'wb') as b:
+    pickle.dump(timelist, b)
 
 ## centrality
 
@@ -147,10 +234,10 @@ n = len(icscore)
 ind = ranked[::-1][:n]
 ind = ind[:,0]
 
-def getclass1candnodes(g, ind):
-
-indcopy = list(ind)
-class1 = []
+# def getclass1candnodes(g, ind):
+#
+# indcopy = list(ind)
+# class1 = []
 
 # while len(class1)<= int(0.3*n) :
 
@@ -287,3 +374,47 @@ def get_probcandidatenodes(Listgraph):
         Stensor.append(Slist)
 
     return Stensor
+
+## activtion informed IM with greedy HC
+
+def ainf_greedy(g, k, candidatenodelist, Listgraph, p=0.5, mc=500):
+
+    """
+    Input:  graph object, number of seed nodes
+    Output: optimal seed set, resulting spread, time for each iteration
+    """
+
+    S, spread, timelapse, start_time = [], [], [], time.time()
+    # S, spread, timelapse = [], [], []
+
+    # Find k nodes with largest marginal gain
+    for _ in range(k):
+
+        # Loop over nodes that are not yet in seed set to find biggest marginal gain
+        best_spread = 0
+
+        for j in set(candidatenodelist) - set(S):
+            s = 0
+            for countg in Listgraph:
+
+                if np.random.uniform(0, 1) > countg.nodes[j]['alpha']:
+
+                    # Get the spread
+                    s = s + IC(g, S + [j], p, mc=100)
+
+            # Update the winning node and spread so far
+            if s > best_spread:
+                best_spread = s
+                best_node = j
+
+        # Add the selected node to the seed set
+        S.append(best_node)
+
+        # Add estimated spread and elapsed time
+        spread.append(best_spread)
+        timelapse.append(time.time() - start_time)
+        print("k", _)
+
+    return S, spread, timelapse
+
+

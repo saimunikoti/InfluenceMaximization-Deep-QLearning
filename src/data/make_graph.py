@@ -48,7 +48,7 @@ def generate_RandomPLC(nodesize, noofgraphs):
         Listgraph.append(nx.generators.random_graphs.powerlaw_cluster_graph(nodesize, 2, 0.05))
     return Listgraph
 
-Listgraph = generate_RandomPLC(4000,1)
+Listgraph = generate_RandomPLC(1000,1)
 
 def generate_RandomBA(nodesize, noofgraphs):
 
@@ -72,10 +72,10 @@ for u,v,d in g.edges(data=True):
     d['weight'] = 0.5
 
 # save edgelist
-filepath = cn.datapath + "\\ca-CSphd\\g400test.txt"
+filepath = cn.datapath + "\\ca-CSphd\\g1ktest.txt"
 nx.write_weighted_edgelist(g, filepath)
 
-filepath = cn.datapath + "\\ca-CSphd\\g400BA.gpickle"
+filepath = cn.datapath + "\\ca-CSphd\\g1ktest.gpickle"
 nx.write_gpickle(g, filepath)
 
 # top = nx.bipartite.sets(C)[0]
@@ -156,8 +156,8 @@ targetdf.drop(columns=['nodename'], inplace=True)
 targetdftest, Listlabeltest = getgraphtargetdf(Listgraphtest)
 targetdftest.drop(columns=['nodename'], inplace=True)
 
-targetdf = pd.get_dummies(targetdf.label)
-targetdftest = pd.get_dummies(targetdftest.label)
+# targetdf = pd.get_dummies(targetdf.label)
+# targetdftest = pd.get_dummies(targetdftest.label)
 
 with open(cn.datapath + "\\ca-CSphd" + "\\Listlabel_PLC_6000.pickle", 'wb') as b:
     pickle.dump(Listlabel, b)

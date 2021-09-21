@@ -1035,6 +1035,7 @@ def knbrs(G, start, k):
 
 # plot subgraphs around selected
 def plotsubgraph(g, nodelist, gcolor) :
+
     subgraphnodes = []
     for node in nodelist:
         nbrs, allnbrs = knbrs(g, node, 2)
@@ -1052,6 +1053,33 @@ def plotsubgraph(g, nodelist, gcolor) :
 
     plt.figure()
     nx.draw_networkx(H, node_color= color_map)
+
+# get random subgraph
+def get_randomsubgraph(graph, n_subgraphs):
+    Listgraph = []
+    g = graph.copy()
+
+    for (u, v) in g.edges():
+        g[u][v]['edgerno'] = np.random.uniform(0, 1, n_subgraphs)
+
+    for countgraph in range(n_subgraphs):
+
+        newedgelist = []
+
+        for (u,v) in g.edges():
+
+            if g[u][v]['weight'] >= g[u][v]['edgerno'][countgraph]:
+                newedgelist.append((u,v))
+
+        tempind = max([np.max(ind) for ind in newedgelist])
+
+        gnew = nx.Graph()
+        # gnew.edge_subgraph(newedgelist).copy()
+        gnew.add_edges_from(newedgelist)
+        Listgraph.append(gnew)
+
+    return Listgraph
+
 
 ## paralllelization for loop
 #

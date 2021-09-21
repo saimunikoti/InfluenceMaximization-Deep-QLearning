@@ -14,20 +14,36 @@ class GraphQNetwork(nn.Module):
     def __init__(self, in_feats, hid_feats, out_feats=1):
         super().__init__()
         self.conv1 = dglnn.SAGEConv(
-            in_feats=in_feats, out_feats=hid_feats, aggregator_type='mean')
+            in_feats=in_feats, out_feats=hid_feats, aggregator_type='pool')
         self.conv2 = dglnn.SAGEConv(
-            in_feats=hid_feats, out_feats=hid_feats, aggregator_type='mean')
+            in_feats=hid_feats, out_feats=hid_feats, aggregator_type='pool')
+        # self.conv3 = dglnn.SAGEConv(
+        #     in_feats=hid_feats, out_feats=hid_feats, aggregator_type='lstm')
 
-        self.fc1 = nn.Linear(3*hid_feats, out_feats)
+        # self.conv1d1 = nn.Conv1d(in_channels=1, out_channels=8, kernel_size=5)
+        self.relu = nn.ReLU(inplace=True)
+
+        Lout = 3*hid_feats-4
+        self.fc1 = nn.Linear(8*Lout, out_feats)
+        self.fc2 = nn.Linear(3*hid_feats, hid_feats, bias=True)
+        self.fc3 = nn.Linear(hid_feats, out_feats, bias=True)
+        # self.bn1 = nn.BatchNorm1d(num_features=hid_feats)
+        # self.bn2 = nn.BatchNorm1d(num_features=hid_feats)
+
         self.dropout = nn.Dropout(0.1)
 
     def forward(self, graph, inputs, states, actions):
         # inputs are features of nodes
         h = self.conv1(graph, inputs)
+
         h = F.relu(h)
         h = self.dropout(h)
+
         h = self.conv2(graph, h)
         h = F.relu(h)
+
+        # h = (self.conv3(graph, h))
+        # h = F.relu(h)
 
         # state_indices = states[0]
         # action_index = torch.tensor(actions)
@@ -36,7 +52,7 @@ class GraphQNetwork(nn.Module):
         actions_vector = torch.index_select(h, 0, actions)
 
         # mean aggregation
-        graph_aggvector = torch.mean(h, dim=(0), keepdim=True)
+        graph_aggvector, _ = torch.max(h, dim=0, keepdim=True)
 
         # max aggregation of RL state
         states_aggvector = torch.amax(states_vector, dim=(0), keepdim=True)
@@ -45,8 +61,14 @@ class GraphQNetwork(nn.Module):
         # states_aggvector = torch.mean(states_vector, dim=0)
 
         h = torch.cat((graph_aggvector, states_aggvector, actions_vector), 1)
+        # h = torch.reshape(h, (1, h.shape[0], h.shape[1]))
 
-        out = self.fc1(h)
+        # out = self.conv1d1(h)
+        # out = self.relu(out)
+        # out = out.view(-1)
+
+        out = F.relu(self.fc2(h))
+        out = self.fc3(out)
 
         return out
 
@@ -155,13 +177,15 @@ class QNetwork(nn.Module):
 
 class genv():
 
-    def __init__(self, glist, candnodelist, b):
+    def __init__(self, glist, candnodelist, b, weighingfactor):
         self.graphlist = glist  # take graphs
         self.candidatenodelist = candnodelist
         self.budget = b
+        self.alpha = weighingfactor
         # print("environemnt is invoked")
 
     def IC(self, g, S, p=0.5, mc=500):
+
         """
         Input:  graph object, set of seed nodes, propagation probability
                 and the number of Monte-Carlo simulations
@@ -246,10 +270,22 @@ class genv():
         self.next_state.append(action.item())
         next_state = self.next_state.copy()
 
-        # print(next_state)
-        # reward
         self.spreadlist.append(self.IC(g= self.graphlist[gindex], S=next_state))
-        reward = self.spreadlist[-1]-self.spreadlist[-2]
+
+        action_prob = self.graphlist[gindex].nodes[action.item()]['alpha']
+
+        # cstate = len(self.state)
+
+        # reward1 = (self.spreadlist[-1]-self.spreadlist[-2])/(maxreward[gindex, cstate-1])
+        reward1 = self.nonlinear_xmation(self.spreadlist[-1]-self.spreadlist[-2])
+        # reward2 = action_prob
+
+        # print(state, action, reward1, next_state, action_prob )
+
+        reward = self.alpha*reward1 + (1-self.alpha)*action_prob
+
+        # reward = (self.spreadlist[-1]-self.spreadlist[-2])*(action_prob)
+        # reward = (self.spreadlist[-1]-self.spreadlist[-2])*0.5 + (action_prob)*0.5
 
         # episode termination criterion
         if len(next_state) >= self.budget:
@@ -257,7 +293,12 @@ class genv():
         else:
             done = False
 
-        return next_state, reward, done
+        return next_state, reward, done, reward1, action_prob
+
+    def nonlinear_xmation(self, x):
+        t = 1-np.exp(-(x-1)/6.67)
+        return np.abs(t)
+
 
 
 
