@@ -11,7 +11,7 @@ import networkx as nx
 in_feats = 5
 hid_feats = 64
 budget = 5
-g = nx.read_gpickle(cnf.datapath + "\\ca-CSphd\\g1ktest.gpickle")
+g = nx.read_gpickle(cnf.datapath + "\\ca-CSphd\\g400test.gpickle")
 Listgraph = [g]
 
 candnodelist = [ list(gind.nodes) for gind in Listgraph ]
@@ -31,15 +31,15 @@ spread_arr = []
 
 for i in tqdm(range(2)):
 
-    # state, candnodelist, gindex = genv.knownreset(start_node=49)
-    state, candnodelist , gindex = genv.reset()
+    state, candnodelist, gindex = genv.knownreset(start_node=2)
+    # state, candnodelist , gindex = genv.reset()
     done = False
     # rew = 0
     actionlist = []
 
     while not done:
 
-        # A = agent.get_action(obs, env.action_space.n, epsilo
+        # A = agent.get_action(obs, env.action_space.n, epsilon
         action = agent.act(state, candnodelist,  gindex, eps=0)
 
         next_state, reward, done, reward1, reward2 = genv.step(action, gindex)
