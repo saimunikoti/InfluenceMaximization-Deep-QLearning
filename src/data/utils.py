@@ -1080,6 +1080,153 @@ def get_randomsubgraph(graph, n_subgraphs):
 
     return Listgraph
 
+def mIC(g, S, p=0.5,mc=500):
+
+    """
+    Input:  graph object, set of seed nodes, propagation probability
+            and the number of Monte-Carlo simulations
+    Output: average number of nodes influenced by the seed nodes
+    """
+    # Loop over the Monte-Carlo Simulations
+    spread = []
+
+    new_active, A = S[:], S[:]
+
+    while new_active:
+
+        # For each newly active node, find its neighbors that become activated
+        new_ones = []
+
+        for node in new_active:
+            # Determine neighbors that become infected
+            # np.random.seed(1)
+            outn = [n for n in g.neighbors(node)]
+            success = np.random.uniform(0, 1, len(outn)) < p
+            new_ones += list(np.extract(success, outn))
+
+        new_active = list(set(new_ones) - set(A))
+
+        # Add newly activated nodes to the set of activated nodes
+        A += new_active
+
+    spread.append(len(A))
+
+    return np.mean(spread)
+
+def aim_greedy(g, k, candidatenodelist, p=0.5, mc=200):
+
+    """
+    Input:  graph object, number of seed nodes
+    Output: optimal seed set, resulting spread, time for each iteration
+    """
+
+    S, spread, timelapse, start_time = [], [], [], time.time()
+    # S, spread, timelapse = [], [], []
+
+    # Find k nodes with largest marginal gain
+    for countb in range(k):
+        # print("node", countb)
+        # Loop over nodes that are not yet in seed set to find biggest marginal gain
+        best_spread = 0
+
+        for j in set(candidatenodelist) - set(S):
+            s = []
+            for count in range(mc):
+
+                np.random.seed(count)
+
+                if np.random.uniform(0, 1) < g.nodes[j]['alpha']:
+
+                    # Get the spread
+                    s.append( mIC(g, S + [j], p=0.5, mc=100))
+
+            # Update the winning node and spread so far
+            if np.sum(s) >= best_spread:
+                best_spread = np.sum(s)
+                best_node = j
+
+        # Add the selected node to the seed set
+        S.append(best_node)
+
+        # Add estimated spread and elapsed time
+        spread.append(best_spread)
+        timelapse.append(time.time() - start_time)
+        print("k", countb)
+
+    return S, spread, timelapse
+
+def IC(g, S, p=0.5, mc=1000):
+
+    """
+    Input:  graph object, set of seed nodes, propagation probability
+            and the number of Monte-Carlo simulations
+    Output: average number of nodes influenced by the seed nodes
+    """
+    # Loop over the Monte-Carlo Simulations
+    spread = []
+
+    for i in range(mc):
+        # print(i)
+        # Simulate propagation process
+        new_active, A = S[:], S[:]
+
+        while new_active :
+
+            # For each newly active node, find its neighbors that become activated
+            new_ones = []
+
+            for node in new_active:
+                # Determine neighbors that become infected
+                np.random.seed(i)
+                outn = [n for n in g.neighbors(node)]
+                success = np.random.uniform(0, 1, len(outn)) < p
+                new_ones += list(np.extract(success, outn))
+
+            new_active = list(set(new_ones) - set(A))
+
+            # Add newly activated nodes to the set of activated nodes
+            A += new_active
+
+        spread.append(len(A))
+
+    return np.mean(spread)
+
+def greedy(g, k, candidatenodelist, p=0.5, mc=500):
+
+    """
+    Input:  graph object, number of seed nodes
+    Output: optimal seed set, resulting spread, time for each iteration
+    """
+
+    S, spread, timelapse, start_time = [], [], [], time.time()
+    # S, spread, timelapse = [], [], []
+
+    # Find k nodes with largest marginal gain
+    for _ in range(k):
+
+        # Loop over nodes that are not yet in seed set to find biggest marginal gain
+        best_spread = 0
+
+        # candidatenodelist = range(len(g.nodes))
+
+        for j in set(candidatenodelist) - set(S):
+
+            # Get the expected spread
+            s = IC(g, S + [j], p, mc)
+
+            # Update the winning node and spread so far
+            if s > best_spread:
+                best_spread, node = s, j
+
+        # Add the selected node to the seed set
+        S.append(node)
+
+        # Add estimated spread and elapsed time
+        spread.append(best_spread)
+        timelapse.append(time.time() - start_time)
+        print("k", _)
+
+    return S, spread, timelapse
 
 ## paralllelization for loop
 #

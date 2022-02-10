@@ -274,6 +274,9 @@ if __name__ == '__main__':
     val_labels = val_g.ndata.pop('labels')
     test_labels = test_g.ndata.pop('labels')
 
+    print("no of train, and val nodes", train_nfeat.shape, val_nfeat.shape)
+
+
     # print("no of train, and val nodes", train_nfeat.shape, val_nfeat.shape)
 
     # else:

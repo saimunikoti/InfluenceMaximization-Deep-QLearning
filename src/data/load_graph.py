@@ -4,15 +4,16 @@ import dgl
 from dgl.data import DGLDataset
 import torch
 import networkx as nx
+from src.data import config as cnf
 
 class PLCgraphDataset(DGLDataset):
 
     def __init__(self):
         super().__init__(name='PLC graph')
 
-    def process(self,):
+    def process(self):
 
-        filepath = r'C:\\Users\\saimunikoti\\Manifestation\\InfluenceMaximization_DRL\\data\\ca-CSphd\\g1ktest.gpickle'
+        filepath = cnf.datapath + '\ca-CSphd\\g6k.gpickle'
 
         g = nx.read_gpickle(filepath)
 
@@ -36,8 +37,8 @@ class PLCgraphDataset(DGLDataset):
         # If your dataset is a node classification dataset, you will need to assign
         # masks indicating whether a node belongs to training, validation, and test set.
         n_nodes = self.graph.num_nodes()
-        n_train = int(n_nodes * 0)
-        n_val = int(n_nodes * 0)
+        n_train = int(n_nodes * 0.85)
+        n_val = int(n_nodes * 0.15)
         train_mask = torch.zeros(n_nodes, dtype=torch.bool)
         val_mask = torch.zeros(n_nodes, dtype=torch.bool)
         test_mask = torch.zeros(n_nodes, dtype=torch.bool)

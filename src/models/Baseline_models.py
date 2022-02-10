@@ -2,11 +2,97 @@ import numpy as np
 import time
 import pickle
 from src.data import config as cn
+from src.data import utils as ut
+from src.visualization import visualize as vs
 import networkx as nx
 
-## define independent cascade model and hill climbing greedy algorithm
+## original GHC algorithm.
+"""
+The results of spread coincides with influence capacity metric
+"""
 
-g = nx.read_gpickle(cn.datapath + "\\ca-CSphd\\g1ktest.gpickle")
+def IC(g, S, p=0.5, mc=200):
+
+    """
+    Input:  graph object, set of seed nodes, propagation probability
+            and the number of Monte-Carlo simulations
+    Output: average number of nodes influenced by the seed nodes
+    """
+    # Loop over the Monte-Carlo Simulations
+    spread = []
+
+    for i in range(mc):
+        # print(i)
+        # Simulate propagation process
+        new_active, A = S[:], S[:]
+
+        while new_active :
+
+            # For each newly active node, find its neighbors that become activated
+            new_ones = []
+
+            for node in new_active:
+                # Determine neighbors that become infected
+                np.random.seed(i)
+                outn = [n for n in g.neighbors(node)]
+                success = np.random.uniform(0, 1, len(outn)) < p
+                new_ones += list(np.extract(success, outn))
+
+            new_active = list(set(new_ones) - set(A))
+
+            # Add newly activated nodes to the set of activated nodes
+            A += new_active
+
+        spread.append(len(A))
+
+    return np.mean(spread)
+
+def greedy(g, k, candidatenodelist, p=0.5, mc=200):
+
+    """
+    Input:  graph object, number of seed nodes
+    Output: optimal seed set, resulting spread, time for each iteration
+    """
+
+    S, spread, timelapse, start_time = [], [], [], time.time()
+    # S, spread, timelapse = [], [], []
+
+    # Find k nodes with largest marginal gain
+    for _ in range(k):
+
+        # Loop over nodes that are not yet in seed set to find biggest marginal gain
+        best_spread = 0
+
+        # candidatenodelist = range(len(g.nodes))
+
+        for j in set(candidatenodelist) - set(S):
+
+            # Get the expected spread
+            s = IC(g, S + [j], p, mc)
+
+            # Update the winning node and spread so far
+            if s > best_spread:
+                best_spread, node = s, j
+
+        # Add the selected node to the seed set
+        S.append(node)
+
+        # Add estimated spread and elapsed time
+        spread.append(best_spread)
+        timelapse.append(time.time() - start_time)
+        print("k", _)
+
+    return S, spread, timelapse
+
+candidatenodes = np.arange(len(g.nodes))
+
+st_time = time.time()
+s, spread, timelist = greedy(g, 5, candidatenodelist = candidatenodes)
+end_time = time.time()-st_time
+
+## define modified independent cascade model and hill climbing greedy algorithm
+
+g = nx.read_gpickle(cn.datapath + "\\ca-CSphd\\g200plcval.gpickle")
 
 def mIC(g, S, p=0.5,mc=500):
 
@@ -89,89 +175,17 @@ candidatenodes = np.arange(len(g.nodes))
 
 # for u,d in g.nodes(data=True):
 #     d['alpha'] = np.random.uniform(0, 1)
+st_time = time.time()
+s, spread, timelist_all = aim_greedy(g, 10, candidatenodelist = candidatenodes)
+end_time = time.time()-st_time
 
-s, spread, timelist = aim_greedy(g, 5, candidatenodelist = candidatenodes)
+st_time = time.time()
+spread = IC(g, s, p = 0.5, mc=200)
+end_time = time.time()-st_time
 
-##
-def IC(g, S, p=0.5, mc=500):
+## save files
 
-    """
-    Input:  graph object, set of seed nodes, propagation probability
-            and the number of Monte-Carlo simulations
-    Output: average number of nodes influenced by the seed nodes
-    """
-    # Loop over the Monte-Carlo Simulations
-    spread = []
-
-    for i in range(mc):
-        # print(i)
-        # Simulate propagation process
-        new_active, A = S[:], S[:]
-
-        while new_active :
-
-            # For each newly active node, find its neighbors that become activated
-            new_ones = []
-
-            for node in new_active:
-                # Determine neighbors that become infected
-                np.random.seed(i)
-                outn = [n for n in g.neighbors(node)]
-                success = np.random.uniform(0, 1, len(outn)) < p
-                new_ones += list(np.extract(success, outn))
-
-            new_active = list(set(new_ones) - set(A))
-
-            # Add newly activated nodes to the set of activated nodes
-            A += new_active
-
-        spread.append(len(A))
-
-    return np.mean(spread)
-
-def greedy(g, k, candidatenodelist, p=0.5, mc=500):
-
-    """
-    Input:  graph object, number of seed nodes
-    Output: optimal seed set, resulting spread, time for each iteration
-    """
-
-    S, spread, timelapse, start_time = [], [], [], time.time()
-    # S, spread, timelapse = [], [], []
-
-    # Find k nodes with largest marginal gain
-    for _ in range(k):
-
-        # Loop over nodes that are not yet in seed set to find biggest marginal gain
-        best_spread = 0
-
-        # candidatenodelist = range(len(g.nodes))
-
-        for j in set(candidatenodelist) - set(S):
-
-            # Get the expected spread
-            s = IC(g, S + [j], p, mc)
-
-            # Update the winning node and spread so far
-            if s > best_spread:
-                best_spread, node = s, j
-
-        # Add the selected node to the seed set
-        S.append(node)
-
-        # Add estimated spread and elapsed time
-        spread.append(best_spread)
-        timelapse.append(time.time() - start_time)
-        print("k", _)
-
-    return S, spread, timelapse
-
-candidatenodes = np.arange(len(g.nodes))
-
-s, spread, timelist = greedy(g, 5, candidatenodelist = candidatenodes)
-
-##
-snew, spreadnew, timelistnew = greedy(g, 5, candidatenodelist = candidatenodes)
+snew, spreadnew, timelistnew = greedy(g, 10, candidatenodelist = candidatenodes)
 
 with open(cn.datapath + "\\ca-CSphd\\S2k_10nodes.pickle", 'wb') as b:
     pickle.dump(s, b)
@@ -180,7 +194,7 @@ with open(cn.datapath + "\\ca-CSphd\\Spread2k_10nodes.pickle", 'wb') as b:
 with open(cn.datapath + "\\ca-CSphd\\time2k_10nodes.pickle", 'wb') as b:
     pickle.dump(timelist, b)
 
-## centrality
+## infleunce capapcity centrality
 
 for u,v,d in g.edges(data=True):
     d['weight'] = 0.5
@@ -264,13 +278,17 @@ with open(filepath) as f:
 data = data[0]
 IMseednodes= data['Seeds']
 
-## plot times of computation
+## plot comparison of computation times
+
+import matplotlib.pyplot as plt
+
 fig1, ax1 = plt.subplots(nrows=1, ncols=1, sharex=False,sharey=False,figsize=(8,6))
 seed = np.arange(1,11)
-ax1.plot(seed, timelistorg, '-o',color="coral",linewidth=3, markersize=8)
-ax1.plot(seed, timelist, '-o',color="cornflowerblue", linewidth=3,  markersize=8)
-ax1.set_xticks(np.arange(1,11,1))
-plot_base(ax1, "seed","Execution time (s)", "Comparison of trivial Hill climbing greedy with proposed approach")
+ax1.plot(seed, timelist_org, '-o', color="coral",linewidth=4, markersize=9)
+ax1.plot(seed, timelist_new, '-o', color="cornflowerblue", linewidth=4,  markersize=9)
+ax1.set_xticks(np.arange(1, 11, 1))
+vs.plot_base(ax1, "seed nodes","Execution time (s)", " ")
+ax1.legend(['Conventional GHC', 'Proposed GHC'], fontsize=26)
 plt.tight_layout()
 
 def IC(g, S, p=0.5, mc=500):

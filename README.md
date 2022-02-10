@@ -1,7 +1,7 @@
 # InfluenceMaximization-Deep-QLearning
 A scalable deep reinforcement learning framework for activation informed influence maximization on Large graphs.
 
-## Folder structure
+## Files structure
 
 ### data
 1.raw graphs: power-law cluster

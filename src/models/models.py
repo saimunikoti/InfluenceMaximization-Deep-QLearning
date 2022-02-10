@@ -11,22 +11,23 @@ import numpy as np
 
 class GraphQNetwork(nn.Module):
 
-    def __init__(self, in_feats, hid_feats, out_feats=1):
+    def __init__(self, in_feats, hid_feats, hid_mlp, out_feats=1):
         super().__init__()
         self.conv1 = dglnn.SAGEConv(
             in_feats=in_feats, out_feats=hid_feats, aggregator_type='pool')
         self.conv2 = dglnn.SAGEConv(
             in_feats=hid_feats, out_feats=hid_feats, aggregator_type='pool')
+
         # self.conv3 = dglnn.SAGEConv(
         #     in_feats=hid_feats, out_feats=hid_feats, aggregator_type='lstm')
 
         # self.conv1d1 = nn.Conv1d(in_channels=1, out_channels=8, kernel_size=5)
         self.relu = nn.ReLU(inplace=True)
 
-        Lout = 3*hid_feats-4
-        self.fc1 = nn.Linear(8*Lout, out_feats)
-        self.fc2 = nn.Linear(3*hid_feats, hid_feats, bias=True)
-        self.fc3 = nn.Linear(hid_feats, out_feats, bias=True)
+        # Lout = 3*hid_feats-4
+        # self.fc1 = nn.Linear(3*hid_feats, out_feats, bias=True)
+        self.fc2 = nn.Linear(3*hid_feats, hid_mlp, bias=True)
+        self.fc3 = nn.Linear(hid_mlp, out_feats, bias=True)
         # self.bn1 = nn.BatchNorm1d(num_features=hid_feats)
         # self.bn2 = nn.BatchNorm1d(num_features=hid_feats)
 
@@ -177,11 +178,12 @@ class QNetwork(nn.Module):
 
 class genv():
 
-    def __init__(self, glist, candnodelist, b, weighingfactor):
+    def __init__(self, glist, candnodelist, b, weighingfactor, intr_threshold):
         self.graphlist = glist  # take graphs
         self.candidatenodelist = candnodelist
         self.budget = b
         self.alpha = weighingfactor
+        self.intr_threshold = intr_threshold
         # print("environemnt is invoked")
 
     def IC(self, g, S, p=0.5, mc=500):
@@ -230,8 +232,17 @@ class genv():
         gindex = random.choice(np.arange(0, len(self.graphlist)))
 
         self.candnodelist = self.candidatenodelist[gindex].copy()
-
         start_node = random.choice(self.candnodelist)
+
+        # exitwhile = True
+        #
+        # while exitwhile:
+        #     node_selected = random.choice(self.candnodelist)
+        #
+        #     if self.graphlist[gindex].nodes[node_selected]['alpha'] > 0.6:
+        #         start_node = node_selected
+        #         exitwhile = False
+
         self.candnodelist.remove(start_node)
 
         self.state.append(start_node)
@@ -274,10 +285,13 @@ class genv():
 
         action_prob = self.graphlist[gindex].nodes[action.item()]['alpha']
 
+        if action_prob < self.intr_threshold:
+            action_prob = 0
+
         # cstate = len(self.state)
 
         # reward1 = (self.spreadlist[-1]-self.spreadlist[-2])/(maxreward[gindex, cstate-1])
-        reward1 = self.nonlinear_xmation(self.spreadlist[-1]-self.spreadlist[-2])
+        reward1 = self.spreadlist[-1]-self.spreadlist[-2]
         # reward2 = action_prob
 
         # print(state, action, reward1, next_state, action_prob )

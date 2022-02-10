@@ -7,12 +7,11 @@ import pandas as pd
 import matplotlib
 matplotlib.use('TkAgg')
 
-
 def generate_RandomPLC(nodesize, noofgraphs):
     Listgraph=[]
 
     for countg in range(noofgraphs):
-        Listgraph.append(nx.generators.random_graphs.powerlaw_cluster_graph(nodesize, 2, 0.05))
+        Listgraph.append(nx.generators.random_graphs.powerlaw_cluster_graph(nodesize, 3, 0.05))
     return Listgraph
 
 Listgraph = generate_RandomPLC(1000,1)
@@ -26,31 +25,59 @@ def generate_RandomBA(nodesize, noofgraphs):
 
     return Listgraph
 
-Listgraph = generate_RandomBA(4000,1)
+Listgraph = generate_RandomBA(1000,1)
 
-def generate_RandomER(nodesize, noofgraphs):
+# def generate_RandomER(nodesize, noofgraphs):
+#
+#     Listgraph = []
+#
+#     for countg in range(noofgraphs):
+#         Listgraph.append(nx.generators.random_graphs.erdos_renyi_graph(n=nodesize, p=0.25))
+#
+#     return Listgraph
+
+# Listgraph = generate_RandomER(200,1)
+
+# def generate_RandomLFR(nodesize, noofgraphs):
+#
+#     Listgraph = []
+#
+#     for countg in range(noofgraphs):
+#         Listgraph.append(nx.generators.community.LFR_benchmark_graph(
+#         n=nodesize, tau1=3, tau2=1.5, mu=0.5, average_degree=15, min_community=30, seed=10
+#         ))
+#
+#     return Listgraph
+
+# Listgraph = generate_RandomLFR(60,1)
+
+def generate_SBM(sizes, noofgraphs):
 
     Listgraph = []
+    dim = len(sizes)
+    # sizes = [55, 50, 50, 20, 25]
+    # probs = [[0.20, 0.03, 0.02, 0.02, 0.01], [0.03, 0.22, 0.05, 0.02, 0.01], [0.02, 0.05, 0.20, 0.01, 0.02],
+    #          [0.02, 0.02, 0.01, 0.21, 0.02], [0.01, 0.01, 0.02, 0.02, 0.23]]
+    probs = np.zeros((dim,dim))
+
+    for ci in range(0,dim):
+        for cj in range(ci, dim):
+            if ci == cj:
+                probs[ci,cj] = np.random.choice([0.20, 0.22, 0.23, 0.22, 0.2, 0.24, 0.22, 0.23, 0.21, 0.2])
+            else:
+                probs[ci,cj] = np.random.choice([0.01,0.02,0.03,0.04,0.05])
+                probs[cj,ci] = probs[ci,cj]
 
     for countg in range(noofgraphs):
-        Listgraph.append(nx.generators.random_graphs.erdos_renyi_graph(n=nodesize, p=0.25))
+        Listgraph.append(nx.stochastic_block_model(sizes, probs))
 
     return Listgraph
 
-Listgraph = generate_RandomER(200,1)
+sizelist = [75, 70, 70, 40, 45, 75, 70, 70, 40, 45 ]
+sizelist = [55, 55, 55, 20, 25, 55, 55, 55, 20, 25]
+sizelist = [110, 130, 120, 120, 120]
 
-def generate_RandomLFR(nodesize, noofgraphs):
-
-    Listgraph = []
-
-    for countg in range(noofgraphs):
-        Listgraph.append(nx.generators.community.LFR_benchmark_graph(
-        n=nodesize, tau1=3, tau2=1.5, mu=0.5, average_degree=15, min_community=30, seed=10
-        ))
-
-    return Listgraph
-
-Listgraph = generate_RandomLFR(1000,1)
+Listgraph = generate_SBM(sizes = sizelist, noofgraphs= 1)
 
 g = Listgraph[0]
 
@@ -60,7 +87,7 @@ for u,v,d in g.edges(data=True):
 
 for node_id, node_data in g.nodes(data=True):
     node_data["feature"] = [g.degree(node_id), nx.average_neighbor_degree(g, nodes=[node_id])[node_id], 1, 1,1]
-    node_data["alpha"] = np.random.uniform(0, 1)
+    # node_data["alpha"] = np.random.uniform(0, 1)
 
 # get random subgraphs
 Listrandomgraph = ut.get_randomsubgraph(g,100)
@@ -122,11 +149,11 @@ for node_id, node_data in g.nodes(data=True):
     node_data["alpha"] = np.random.uniform(0,1)
 
 ##
-filepath = cnf.datapath + "\\ca-CSphd\\g1ktest.gpickle"
+filepath = cnf.datapath + "\\ca-CSphd\\g600sbmval2.gpickle"
 
 nx.write_gpickle(g, filepath, protocol=4)
 
-filepath = cnf.datapath + "\\ca-CSphd\\gER200test.txt"
+filepath = cnf.datapath + "\\ca-CSphd\\g600sbmval.txt"
 
 nx.write_weighted_edgelist(g, filepath)
 
