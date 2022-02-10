@@ -13,7 +13,7 @@ import pandas as pd
 
 ##
 
-g = nx.read_gpickle(cnf.datapath + "\\ca-CSphd\\g600plcval.gpickle")
+g = nx.read_gpickle(cnf.datapath + "\\ca-CSphd\\g200plcval.gpickle")
 Listgraph = [g]
 
 candnodelist = []
@@ -21,7 +21,7 @@ for countg in Listgraph:
     templist = [ nodeind for nodeind in countg.nodes if countg.nodes[nodeind]['alpha'] > 0.1]
     candnodelist.append(templist)
 
-## ##============ spread with mgrl ========
+## ##============ spread with GraMeR ========
 
 in_feats = 5
 hid_feats = 64
@@ -80,11 +80,11 @@ for i in tqdm(range(1)):
 
 candidatenodes = np.arange(len(g.nodes))
 st_time = time.time()
-s_mghc, spread, timelist = ut.aim_greedy(g, 20, candidatenodelist=candidatenodes)
+s_mghc, spread, timelist = ut.aim_greedy(g, budget, candidatenodelist=candidatenodes)
 end_time_mghc = time.time() - st_time
 prob_mghc = np.round(np.array([g.nodes[ind]['alpha'] for ind in s_mghc ]), 3)
 
-## combingin results in dataframe
+## combining results in dataframe
 
 Resultsdf = pd.DataFrame(columns=['budget', 'slist_mghc','spread_mghc', 'iprob_mghc', 'meaniprob_mghc', 'time_mghc', 'slist_mgrl', 'spread_mgrl', 'iprob_mgrl',
                  'meaniprob_mgrl', 'time_mgrl'])
@@ -113,10 +113,10 @@ for cind in range(4):
     Resultsdf.at[cind, 'meaniprob_mghc'] = np.mean(prob_mghc[0:lastind])
     Resultsdf.at[cind,'time_mghc'] = (end_time_mghc/20)*lastind + 0.05*lastind
 
-filepath = cnf.modelpath + "\Resultsdf_plc1k.xlsx"
+filepath = cnf.modelpath + "\Resultsdf_plc.xlsx"
 Resultsdf.to_excel(filepath, sheet_name="1k")
 
-## plots definition
+## plots for all results in paper.
 
 from matplotlib.ticker import FormatStrFormatter
 

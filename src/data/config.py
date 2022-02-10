@@ -1,9 +1,11 @@
+import os
+cwd = os.getcwd()
 
-datapath = r"C:\Users\saimunikoti\Manifestation\InfluenceMaximization_DRL\InfluenceMaximization-Deep-QLearning\data"
+datapath = cwd + "\data"
 
-modelpath = r"C:\Users\saimunikoti\Manifestation\InfluenceMaximization_DRL\InfluenceMaximization-Deep-QLearning\models"
+modelpath = cwd + "\models"
 
-resultspath = r"C:\Users\saimunikoti\Manifestation\InfluenceMaximization_DRL\InfluenceMaximization-Deep-QLearning\reports"
+resultspath = cwd + "\\reports"
 
 
 
