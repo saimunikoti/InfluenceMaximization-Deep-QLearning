@@ -9,7 +9,7 @@ This code is provided solely for the purpose of peer review for the KDD 2022 con
 ===================== File specification =========================
 
 ### data
-1. data\ca-CSphd\: Train and val graphs from different families.
+1. data/ca-CSphd/: Train and val graphs from different families.
 
 ### script files
 1. src/data/config.py: project directory paths
@@ -26,12 +26,12 @@ This code is provided solely for the purpose of peer review for the KDD 2022 con
 9.  src/models/dqnAgent.py: utility functions for Q learning agent.
 10. src/models/models.py: Q network model.
 
-11. src/models/testdqn.py: Test trained dqn agent and generate plots.
+11. src/models/testdqn.py: Test trained dqn agent and generate plots of performance.
 
 12. src/models/Baseline_models.py: Functions for getting ground truths from Greedy Hill climbing and Influence capapcity scores.
 
 ### models
-1. Trained node classification (candidiate node identiifcation)  models in torch format.\
+1. Trained node classification (candidiate node identiifcation)  models in torch format.
 2. Trained QLearning agent models.
 
 Note: There are other files that are developed on fly but are not needed for the output generation.
