@@ -34,7 +34,7 @@ This code is provided solely for the purpose of peer review for the KDD 2022 con
 1. Trained node classification (candidiate node identiifcation)  models in torch format.
 2. Trained QLearning agent models.
 
-Run testdqn.py to generate results and plots.
+Run functions in testdqn.py to generate results and plots.
 
 Note: There are other files that are developed on fly but are not needed for the output generation.
 
