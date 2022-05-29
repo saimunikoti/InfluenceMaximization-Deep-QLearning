@@ -2,9 +2,7 @@
 
 A scalable deep reinforcement learning framework for activation informed influence maximization on Large graphs.
 
-Anonymized GitHub repo for KDD 2022 Submission.
-
-This code is provided solely for the purpose of peer review for the KDD 2022 conference.
+Anonymized GitHub repo.
 
 ===================== File specification =========================
 
