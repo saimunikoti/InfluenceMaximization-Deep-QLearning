@@ -36,4 +36,8 @@ Run functions in testdqn.py to generate results and plots.
 
 Note: There are other files that are developed on fly but are not needed for the output generation.
 
+### Contributor 
+Sai Munikoti - sai.munikoti [at] pnnl [dot] gov
+Mahantesh Halappanavar - mahantesh.halappanavar [at] pnnl [dot] gov
+Bala Natarajan - bala [at] ksu [dot] edu
 ==================================== end =========================
